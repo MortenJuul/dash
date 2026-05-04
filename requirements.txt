@@ -1,4 +1,5 @@
 streamlit
+streamlit-js-eval
 pandas
 psycopg[binary]
 python-dotenv

@@ -1,12 +1,14 @@
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import psycopg
 import streamlit as st
 from dotenv import load_dotenv
 from psycopg.rows import dict_row
+from streamlit_js_eval import streamlit_js_eval
 
 
 load_dotenv()
@@ -71,6 +73,33 @@ def load_tracker() -> pd.DataFrame:
         return frame
     frame["entry_date"] = pd.to_datetime(frame["entry_date"]).dt.date
     return frame
+
+
+def get_browser_context() -> tuple[str, datetime]:
+    browser_timezone = streamlit_js_eval(
+        js_expressions="Intl.DateTimeFormat().resolvedOptions().timeZone",
+        key="browser_timezone",
+    ) or "UTC"
+    browser_now_iso = streamlit_js_eval(
+        js_expressions="new Date().toISOString()",
+        key="browser_now_iso",
+    )
+
+    try:
+        tzinfo = ZoneInfo(browser_timezone)
+    except Exception:
+        browser_timezone = "UTC"
+        tzinfo = ZoneInfo("UTC")
+
+    if browser_now_iso:
+        try:
+            browser_now = datetime.fromisoformat(browser_now_iso.replace("Z", "+00:00")).astimezone(tzinfo)
+        except ValueError:
+            browser_now = datetime.now(timezone.utc).astimezone(tzinfo)
+    else:
+        browser_now = datetime.now(timezone.utc).astimezone(tzinfo)
+
+    return browser_timezone, browser_now
 
 
 def save_entry(payload: dict[str, Any]) -> None:
@@ -172,6 +201,8 @@ def challenge_day(selected_date: date) -> int:
     return (selected_date - CHALLENGE_START).days + 1
 
 
+browser_timezone, browser_now = get_browser_context()
+
 st.title("The 12-Week Forge")
 st.caption("Dashboard gremlin online. Track the challenge, log the day, and watch the strike counter like it owes you money.")
 
@@ -189,6 +220,8 @@ except Exception as exc:
 if tracker.empty:
     st.warning("No Forge rows found in the database.")
     st.stop()
+
+tracker["updated_at_local"] = pd.to_datetime(tracker["updated_at"], utc=True).dt.tz_convert(browser_timezone)
 
 total_strikes = int(tracker["strikes_today"].fillna(0).sum())
 logged_mask = tracker[
@@ -208,8 +241,7 @@ logged_mask = tracker[
 ].notna().any(axis=1)
 days_logged = int(logged_mask.sum())
 days_complete = int((tracker["completed_checks"].fillna(0) >= 8).sum())
-current_date = date.today()
-default_date = min(max(current_date, CHALLENGE_START), CHALLENGE_END)
+default_date = min(max(browser_now.date(), CHALLENGE_START), CHALLENGE_END)
 current_row_df = tracker.loc[tracker["entry_date"] == default_date]
 if current_row_df.empty:
     current_row_df = tracker.iloc[[0]]
@@ -220,6 +252,7 @@ status_delta = f"{3 - total_strikes} strikes left" if total_strikes < 3 else "St
 
 with st.sidebar:
     st.header("Challenge status")
+    st.caption(f"Browser timezone: {browser_timezone}")
     st.metric("Status", status_text, status_delta)
     st.metric("Total strikes", total_strikes)
     st.metric("Days fully clean", days_complete)
@@ -233,6 +266,10 @@ left.metric("Today", current_row["entry_date"].isoformat())
 mid.metric("Challenge day", challenge_day(current_row["entry_date"]))
 right.metric("Planned session", current_row["planned_session"])
 far_right.metric("Days logged", days_logged)
+
+last_updated_local = tracker["updated_at_local"].dropna().max()
+if pd.notna(last_updated_local):
+    st.caption(f"Latest DB update shown in your browser time: {last_updated_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
 
 selected_date = st.date_input(
     "Log / review date",
@@ -345,6 +382,11 @@ with tab_log:
         st.success("Saved. The gremlin fed the database.")
         st.rerun()
 
+    if pd.notna(selected_row["updated_at_local"]):
+        st.caption(
+            f"Last saved for this day: {selected_row['updated_at_local'].strftime('%Y-%m-%d %H:%M:%S %Z')}"
+        )
+
     summary_cols = st.columns(5)
     summary_cols[0].metric("Workout", format_status(selected_row["workout_done"], "Done", "Missed"))
     summary_cols[1].metric("Steps", format_status(selected_row["steps_goal_hit"], "10k hit", "Under 10k"))
@@ -368,6 +410,7 @@ with tab_week:
             "progress_photo",
             "strikes_today",
             "cumulative_strikes",
+            "updated_at_local",
         ]
     ].copy()
     for col in [
@@ -380,6 +423,9 @@ with tab_week:
         "progress_photo",
     ]:
         display[col] = display[col].map(bool_icon)
+    display["updated_at_local"] = display["updated_at_local"].apply(
+        lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+    )
     st.dataframe(display, use_container_width=True, hide_index=True)
 
 with tab_trends:
@@ -402,4 +448,8 @@ with tab_trends:
 with tab_data:
     raw = tracker.copy()
     raw["entry_date"] = raw["entry_date"].astype(str)
+    raw["updated_at"] = pd.to_datetime(raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+    raw["updated_at_local"] = raw["updated_at_local"].apply(
+        lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+    )
     st.dataframe(raw, use_container_width=True, hide_index=True)
