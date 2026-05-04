@@ -546,14 +546,24 @@ with tab_food:
             f"{latest_food['water_remaining_liters']:.2f} L left" if pd.notna(latest_food["water_remaining_liters"]) else None,
         )
 
-        st.markdown("### Calories")
-        st.line_chart(food_daily[["calories", "calories_target"]])
+        calories_chart = food_daily[["calories", "calories_target"]].copy()
+        calories_chart.loc[calories_chart["calories"].isna(), "calories_target"] = pd.NA
 
-        st.markdown("### Macros")
-        st.line_chart(food_daily[["protein_g", "fat_g", "carbs_g", "fiber_g"]])
+        macros_chart = food_daily[["protein_g", "fat_g", "carbs_g", "fiber_g"]].copy()
+
+        water_chart = food_daily[["water_liters", "water_target_liters"]].copy()
+        water_chart.loc[water_chart["water_liters"].isna(), "water_target_liters"] = pd.NA
+
+        chart_left, chart_right = st.columns(2)
+        with chart_left:
+            st.markdown("### Calories")
+            st.line_chart(calories_chart)
+        with chart_right:
+            st.markdown("### Macros")
+            st.line_chart(macros_chart)
 
         st.markdown("### Water")
-        st.line_chart(food_daily[["water_liters", "water_target_liters"]])
+        st.line_chart(water_chart)
 
         recent_food = food_daily.reset_index().copy()
         recent_food = recent_food.sort_values("entry_date", ascending=False)
