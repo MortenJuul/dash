@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import altair as alt
 import pandas as pd
 import psycopg
 import streamlit as st
@@ -247,6 +248,28 @@ def format_status(value: bool | None, good: str, bad: str, unknown: str = "Not l
     if value is False:
         return bad
     return unknown
+
+
+def render_food_chart(frame: pd.DataFrame, series: list[str], title: str) -> alt.Chart:
+    chart_frame = frame.reset_index()[["entry_date", *series]].copy()
+    chart_frame["entry_date"] = pd.to_datetime(chart_frame["entry_date"])
+    melted = chart_frame.melt("entry_date", var_name="series", value_name="value")
+
+    return (
+        alt.Chart(melted)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X("entry_date:T", title="Date", sort="ascending"),
+            y=alt.Y("value:Q", title=None, scale=alt.Scale(zero=False, nice=True, reverse=False)),
+            color=alt.Color("series:N", title=None),
+            tooltip=[
+                alt.Tooltip("yearmonthdate(entry_date):T", title="Date"),
+                alt.Tooltip("series:N", title="Series"),
+                alt.Tooltip("value:Q", title="Value", format=".2f"),
+            ],
+        )
+        .properties(height=260, title=title)
+    )
 
 
 def challenge_day(selected_date: date) -> int:
@@ -556,14 +579,11 @@ with tab_food:
 
         chart_left, chart_right = st.columns(2)
         with chart_left:
-            st.markdown("### Calories")
-            st.line_chart(calories_chart)
+            st.altair_chart(render_food_chart(calories_chart, ["calories", "calories_target"], "Calories"), use_container_width=True)
         with chart_right:
-            st.markdown("### Macros")
-            st.line_chart(macros_chart)
+            st.altair_chart(render_food_chart(macros_chart, ["protein_g", "fat_g", "carbs_g", "fiber_g"], "Macros"), use_container_width=True)
 
-        st.markdown("### Water")
-        st.line_chart(water_chart)
+        st.altair_chart(render_food_chart(water_chart, ["water_liters", "water_target_liters"], "Water"), use_container_width=True)
 
         recent_food = food_daily.reset_index().copy()
         recent_food = recent_food.sort_values("entry_date", ascending=False)
