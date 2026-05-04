@@ -29,6 +29,9 @@ DATABASE_URL = os.getenv("DATABASE_URL") or read_secret_file(os.getenv("DATABASE
 CHALLENGE_START = date(2026, 5, 4)
 CHALLENGE_END = date(2026, 7, 26)
 REVIEW_GATES = [date(2026, 5, 31), date(2026, 6, 28), date(2026, 7, 26)]
+STEP_GOAL = 8_000
+PROTEIN_GOAL_G = 150
+HYDRATION_GOAL_L = 3.0
 
 
 @st.cache_data(ttl=60)
@@ -75,6 +78,54 @@ def load_tracker() -> pd.DataFrame:
     return frame
 
 
+@st.cache_data(ttl=60)
+def load_food_daily() -> pd.DataFrame:
+    with psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                  entry_date,
+                  calories_target,
+                  protein_target_g,
+                  fat_target_g,
+                  carbs_target_g,
+                  fiber_target_g_low,
+                  fiber_target_g_high,
+                  water_target_liters,
+                  calories,
+                  protein_g,
+                  fat_g,
+                  carbs_g,
+                  fiber_g,
+                  water_liters,
+                  calories_remaining,
+                  protein_remaining_g,
+                  fat_remaining_g,
+                  carbs_remaining_g,
+                  fiber_remaining_g_low,
+                  fiber_remaining_g_high,
+                  water_remaining_liters,
+                  calories_pct,
+                  protein_pct,
+                  fat_pct,
+                  carbs_pct,
+                  water_pct,
+                  entries_markdown,
+                  source_file,
+                  updated_at
+                from challenge.food_daily_status
+                order by entry_date
+                """
+            )
+            rows = cur.fetchall()
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    frame["entry_date"] = pd.to_datetime(frame["entry_date"]).dt.date
+    return frame
+
+
 def get_browser_context() -> tuple[str, datetime]:
     browser_timezone = streamlit_js_eval(
         js_expressions="Intl.DateTimeFormat().resolvedOptions().timeZone",
@@ -110,9 +161,9 @@ def save_entry(payload: dict[str, Any]) -> None:
     weigh_in = payload.get("weigh_in") if scale_available else None
     weight = payload.get("weight") if scale_available and weigh_in else None
 
-    steps_goal_hit = steps_count is not None and steps_count >= 10_000
-    protein_goal_hit = protein_g is not None and protein_g >= 150
-    hydration_goal_hit = water_liters is not None and 3 <= water_liters <= 4
+    steps_goal_hit = steps_count is not None and steps_count >= STEP_GOAL
+    protein_goal_hit = protein_g is not None and protein_g >= PROTEIN_GOAL_G
+    hydration_goal_hit = water_liters is not None and water_liters >= HYDRATION_GOAL_L
 
     strike_checks = [
         payload.get("workout_done"),
@@ -179,6 +230,7 @@ def save_entry(payload: dict[str, Any]) -> None:
                 """
             )
     load_tracker.clear()
+    load_food_daily.clear()
 
 
 def bool_icon(value: Any) -> str:
@@ -216,6 +268,13 @@ except Exception as exc:
     st.error("Could not load Forge data from Postgres.")
     st.exception(exc)
     st.stop()
+
+food_daily = pd.DataFrame()
+food_daily_error = None
+try:
+    food_daily = load_food_daily()
+except Exception as exc:
+    food_daily_error = exc
 
 if tracker.empty:
     st.warning("No Forge rows found in the database.")
@@ -283,7 +342,7 @@ st.info(
     f"Week {int(selected_row['week_no'])}, Block {int(selected_row['block_no'])}, {selected_row['day_name']} — {selected_row['planned_session']}"
 )
 
-tab_log, tab_week, tab_trends, tab_data = st.tabs(["Daily check-in", "Week view", "Trends", "Raw data"])
+tab_log, tab_week, tab_trends, tab_food, tab_data = st.tabs(["Daily check-in", "Week view", "Trends", "Food", "Raw data"])
 
 with tab_log:
     with st.form("forge-daily-checkin"):
@@ -389,9 +448,9 @@ with tab_log:
 
     summary_cols = st.columns(5)
     summary_cols[0].metric("Workout", format_status(selected_row["workout_done"], "Done", "Missed"))
-    summary_cols[1].metric("Steps", format_status(selected_row["steps_goal_hit"], "10k hit", "Under 10k"))
+    summary_cols[1].metric("Steps", format_status(selected_row["steps_goal_hit"], "8k hit", "Under 8k"))
     summary_cols[2].metric("Protein", format_status(selected_row["protein_goal_hit"], "150g hit", "Under 150g"))
-    summary_cols[3].metric("Hydration", format_status(selected_row["hydration_goal_hit"], "3-4 L hit", "Missed"))
+    summary_cols[3].metric("Hydration", format_status(selected_row["hydration_goal_hit"], "3 L hit", "Under 3 L"))
     summary_cols[4].metric("Strikes today", int(selected_row["strikes_today"] or 0))
 
 with tab_week:
@@ -445,6 +504,63 @@ with tab_trends:
         st.markdown("### Strikes")
         st.line_chart(chart_df[["strikes_today", "cumulative_strikes"]].fillna(0))
 
+with tab_food:
+    st.markdown("### Food daily totals")
+    if food_daily_error is not None:
+        st.warning("Food tab data is unavailable right now.")
+        st.caption(str(food_daily_error))
+    elif food_daily.empty:
+        st.caption("No food rows synced yet.")
+    else:
+        food_daily = food_daily.copy()
+        food_daily["updated_at_local"] = pd.to_datetime(food_daily["updated_at"], utc=True).dt.tz_convert(browser_timezone)
+        food_daily = food_daily.set_index("entry_date")
+        latest_food = food_daily.iloc[-1]
+
+        food_metrics = st.columns(5)
+        food_metrics[0].metric("Latest day", str(food_daily.index[-1]))
+        food_metrics[1].metric("Calories", int(latest_food["calories"]) if pd.notna(latest_food["calories"]) else "—")
+        food_metrics[2].metric("Protein", f"{latest_food['protein_g']:.1f} g" if pd.notna(latest_food["protein_g"]) else "—")
+        food_metrics[3].metric("Water", f"{latest_food['water_liters']:.2f} L" if pd.notna(latest_food["water_liters"]) else "—")
+        food_metrics[4].metric("Target hit rate", f"{latest_food['protein_pct']:.0f}% protein / {latest_food['water_pct']:.0f}% water" if pd.notna(latest_food["protein_pct"]) and pd.notna(latest_food["water_pct"]) else "—")
+
+        food_left, food_right = st.columns(2)
+        with food_left:
+            st.markdown("### Calories / protein")
+            st.line_chart(food_daily[["calories", "calories_target", "protein_g", "protein_target_g"]])
+        with food_right:
+            st.markdown("### Fat / carbs / water")
+            st.line_chart(food_daily[["fat_g", "carbs_g", "water_liters", "water_target_liters"]])
+
+        recent_food = food_daily.reset_index().copy()
+        recent_food["entry_date"] = recent_food["entry_date"].astype(str)
+        recent_food["updated_at_local"] = recent_food["updated_at_local"].apply(
+            lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+        )
+        st.markdown("### Recent food log rollup")
+        st.dataframe(
+            recent_food[[
+                "entry_date",
+                "calories",
+                "protein_g",
+                "fat_g",
+                "carbs_g",
+                "fiber_g",
+                "water_liters",
+                "calories_target",
+                "protein_target_g",
+                "water_target_liters",
+                "updated_at_local",
+            ]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        latest_entries = latest_food.get("entries_markdown")
+        if latest_entries:
+            with st.expander("Latest day entry details"):
+                st.markdown(latest_entries)
+
 with tab_data:
     raw = tracker.copy()
     raw["entry_date"] = raw["entry_date"].astype(str)
@@ -452,4 +568,15 @@ with tab_data:
     raw["updated_at_local"] = raw["updated_at_local"].apply(
         lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
     )
+    st.markdown("### Forge raw data")
     st.dataframe(raw, use_container_width=True, hide_index=True)
+
+    if food_daily_error is not None:
+        st.markdown("### Food raw data")
+        st.caption("Unavailable because the food query failed.")
+    elif not food_daily.empty:
+        food_raw = food_daily.reset_index().copy()
+        food_raw["entry_date"] = food_raw["entry_date"].astype(str)
+        food_raw["updated_at"] = pd.to_datetime(food_raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        st.markdown("### Food raw data")
+        st.dataframe(food_raw, use_container_width=True, hide_index=True)
