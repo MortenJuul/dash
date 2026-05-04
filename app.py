@@ -11,7 +11,7 @@ st.set_page_config(page_title="Dash", page_icon=":bar_chart:", layout="wide")
 
 database_url = os.getenv("DATABASE_URL", "")
 
-st.title("Dash")
+st.title("Hi Morten")
 st.write("This placeholder will become the OpenClaw habit dashboard.")
 
 status_label = "Configured" if database_url else "Running without database"
