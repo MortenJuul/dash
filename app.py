@@ -517,22 +517,46 @@ with tab_food:
         food_daily = food_daily.set_index("entry_date")
         latest_food = food_daily.iloc[-1]
 
-        food_metrics = st.columns(5)
-        food_metrics[0].metric("Latest day", str(food_daily.index[-1]))
-        food_metrics[1].metric("Calories", int(latest_food["calories"]) if pd.notna(latest_food["calories"]) else "—")
-        food_metrics[2].metric("Protein", f"{latest_food['protein_g']:.1f} g" if pd.notna(latest_food["protein_g"]) else "—")
-        food_metrics[3].metric("Water", f"{latest_food['water_liters']:.2f} L" if pd.notna(latest_food["water_liters"]) else "—")
-        food_metrics[4].metric("Target hit rate", f"{latest_food['protein_pct']:.0f}% protein / {latest_food['water_pct']:.0f}% water" if pd.notna(latest_food["protein_pct"]) and pd.notna(latest_food["water_pct"]) else "—")
+        st.caption(f"Latest logged day: {food_daily.index[-1]}")
 
-        food_left, food_right = st.columns(2)
-        with food_left:
-            st.markdown("### Calories / protein")
-            st.line_chart(food_daily[["calories", "calories_target", "protein_g", "protein_target_g"]])
-        with food_right:
-            st.markdown("### Fat / carbs / water")
-            st.line_chart(food_daily[["fat_g", "carbs_g", "water_liters", "water_target_liters"]])
+        food_metrics = st.columns(5)
+        food_metrics[0].metric(
+            "Calories",
+            f"{int(latest_food['calories'])} / {int(latest_food['calories_target'])} kcal" if pd.notna(latest_food["calories"]) and pd.notna(latest_food["calories_target"]) else "—",
+            f"{int(latest_food['calories_remaining'])} left" if pd.notna(latest_food["calories_remaining"]) else None,
+        )
+        food_metrics[1].metric(
+            "Protein",
+            f"{latest_food['protein_g']:.1f} / {latest_food['protein_target_g']:.1f} g" if pd.notna(latest_food["protein_g"]) and pd.notna(latest_food["protein_target_g"]) else "—",
+            f"{latest_food['protein_remaining_g']:.1f} g left" if pd.notna(latest_food["protein_remaining_g"]) else None,
+        )
+        food_metrics[2].metric(
+            "Fat",
+            f"{latest_food['fat_g']:.1f} / {latest_food['fat_target_g']:.1f} g" if pd.notna(latest_food["fat_g"]) and pd.notna(latest_food["fat_target_g"]) else "—",
+            f"{latest_food['fat_remaining_g']:.1f} g left" if pd.notna(latest_food["fat_remaining_g"]) else None,
+        )
+        food_metrics[3].metric(
+            "Carbs",
+            f"{latest_food['carbs_g']:.1f} / {latest_food['carbs_target_g']:.1f} g" if pd.notna(latest_food["carbs_g"]) and pd.notna(latest_food["carbs_target_g"]) else "—",
+            f"{latest_food['carbs_remaining_g']:.1f} g left" if pd.notna(latest_food["carbs_remaining_g"]) else None,
+        )
+        food_metrics[4].metric(
+            "Water",
+            f"{latest_food['water_liters']:.2f} / {latest_food['water_target_liters']:.2f} L" if pd.notna(latest_food["water_liters"]) and pd.notna(latest_food["water_target_liters"]) else "—",
+            f"{latest_food['water_remaining_liters']:.2f} L left" if pd.notna(latest_food["water_remaining_liters"]) else None,
+        )
+
+        st.markdown("### Calories")
+        st.line_chart(food_daily[["calories", "calories_target"]])
+
+        st.markdown("### Macros")
+        st.line_chart(food_daily[["protein_g", "fat_g", "carbs_g", "fiber_g"]])
+
+        st.markdown("### Water")
+        st.line_chart(food_daily[["water_liters", "water_target_liters"]])
 
         recent_food = food_daily.reset_index().copy()
+        recent_food = recent_food.sort_values("entry_date", ascending=False)
         recent_food["entry_date"] = recent_food["entry_date"].astype(str)
         recent_food["updated_at_local"] = recent_food["updated_at_local"].apply(
             lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
