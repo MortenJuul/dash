@@ -81,7 +81,7 @@ with st.sidebar:
     st.caption("Daily operating dashboard")
     section = st.radio(
         "Section",
-        ["Today", "Forge", "Food", "Planning", "Raw data"],
+        ["Home", "Forge", "Food", "Planning", "Raw data"],
         index=0,
         label_visibility="collapsed",
     )
@@ -112,7 +112,7 @@ with st.sidebar:
     if pd.notna(latest_update):
         st.caption(f"Updated: {latest_update.strftime('%Y-%m-%d %H:%M %Z')}")
 
-if section == "Today":
+if section == "Home":
     render_today(tracker, food_daily, todos, browser_timezone, selected_date)
 elif section == "Forge":
     render_forge(tracker)
