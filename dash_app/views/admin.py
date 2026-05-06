@@ -23,7 +23,7 @@ def render_admin(
     ingredients: pd.DataFrame,
     ingredients_error: Exception | None,
 ) -> None:
-    st.subheader("Admin / raw data")
+    st.subheader("Raw data")
     st.caption("Debug tables live here so the main dashboard can act like a product, not a warehouse spill.")
 
     with st.expander("Forge raw data", expanded=False):

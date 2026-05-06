@@ -81,7 +81,7 @@ with st.sidebar:
     st.caption("Daily operating dashboard")
     section = st.radio(
         "Section",
-        ["Today", "Forge", "Food", "Planning", "Admin"],
+        ["Today", "Forge", "Food", "Planning", "Raw data"],
         index=0,
         label_visibility="collapsed",
     )
@@ -117,12 +117,9 @@ if section == "Today":
 elif section == "Forge":
     render_forge(tracker)
 elif section == "Food":
-    render_food(food_daily, food_daily_error, browser_timezone)
-elif section == "Planning":
-    render_planning(
-        todos,
-        todo_events,
-        todos_error,
+    render_food(
+        food_daily,
+        food_daily_error,
         recipes,
         recipe_ingredients,
         recipes_error,
@@ -130,6 +127,8 @@ elif section == "Planning":
         ingredients_error,
         browser_timezone,
     )
+elif section == "Planning":
+    render_planning(todos, todo_events, todos_error, browser_timezone)
 else:
     render_admin(
         tracker,
