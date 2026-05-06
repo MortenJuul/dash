@@ -20,6 +20,7 @@ if not FOOD_LOG_DIR.exists():
 SECTION_RE = re.compile(r'^##\s+(.+?)\s*$', re.MULTILINE)
 LINE_RE = re.compile(r'^-\s+([^:]+):\s+(.+?)\s*$', re.MULTILINE)
 NUMBER_RE = re.compile(r'-?\d+(?:\.\d+)?')
+RANGE_NUMBER_RE = re.compile(r'\d+(?:\.\d+)?')
 
 
 def sql_num(value):
@@ -50,7 +51,7 @@ def parse_first_number(value: str):
 def parse_range(value: str):
     if not value:
         return (None, None)
-    numbers = [float(part) for part in NUMBER_RE.findall(value)]
+    numbers = [float(part) for part in RANGE_NUMBER_RE.findall(value)]
     if not numbers:
         return (None, None)
     if len(numbers) == 1:

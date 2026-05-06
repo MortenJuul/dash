@@ -127,6 +127,137 @@ def load_food_daily() -> pd.DataFrame:
     return frame
 
 
+@st.cache_data(ttl=60)
+def load_recipes() -> tuple[pd.DataFrame, pd.DataFrame]:
+    with psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                  recipe_key,
+                  recipe_name,
+                  category,
+                  total_amount_g,
+                  calories,
+                  protein_g,
+                  fat_g,
+                  carbs_g,
+                  fiber_g,
+                  notes,
+                  tags,
+                  updated_at
+                from challenge.recipe_summaries_status
+                order by recipe_name
+                """
+            )
+            recipe_rows = cur.fetchall()
+            cur.execute(
+                """
+                select
+                  recipe_key,
+                  recipe_name,
+                  category,
+                  sort_order,
+                  ingredient_key,
+                  product_name,
+                  brand,
+                  amount_g,
+                  calories,
+                  protein_g,
+                  fat_g,
+                  carbs_g,
+                  fiber_g,
+                  notes,
+                  tags,
+                  updated_at
+                from challenge.recipe_ingredients_status
+                order by recipe_name, sort_order, product_name
+                """
+            )
+            ingredient_rows = cur.fetchall()
+    return pd.DataFrame(recipe_rows), pd.DataFrame(ingredient_rows)
+
+
+@st.cache_data(ttl=60)
+def load_ingredients() -> pd.DataFrame:
+    with psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                  ingredient_key,
+                  product_name,
+                  brand,
+                  label_serving_text,
+                  label_serving_g,
+                  regular_portion_g,
+                  calories_per_100g,
+                  protein_g_per_100g,
+                  fat_g_per_100g,
+                  carbs_g_per_100g,
+                  fiber_g_per_100g,
+                  sugar_g_per_100g,
+                  sodium_mg_per_100g,
+                  nicknames,
+                  source_kind,
+                  source_detail,
+                  notes,
+                  updated_at
+                from challenge.ingredients_status
+                order by coalesce(brand, ''), product_name
+                """
+            )
+            rows = cur.fetchall()
+    return pd.DataFrame(rows)
+
+
+@st.cache_data(ttl=60)
+def load_todos() -> tuple[pd.DataFrame, pd.DataFrame]:
+    with psycopg.connect(DATABASE_URL, autocommit=True, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                  task_key,
+                  title,
+                  status,
+                  priority,
+                  area,
+                  due_date,
+                  tags,
+                  notes,
+                  source_file,
+                  created_at,
+                  updated_at,
+                  completed_at,
+                  is_open,
+                  is_overdue
+                from challenge.todos_status
+                order by is_open desc, is_overdue desc, due_date nulls last, title
+                """
+            )
+            todo_rows = cur.fetchall()
+            cur.execute(
+                """
+                select
+                  event_key,
+                  task_key,
+                  title,
+                  event_type,
+                  event_at,
+                  details,
+                  source_file,
+                  status,
+                  priority,
+                  area
+                from challenge.todo_events_status
+                order by event_at desc, event_key desc
+                """
+            )
+            event_rows = cur.fetchall()
+    return pd.DataFrame(todo_rows), pd.DataFrame(event_rows)
+
+
 def get_browser_context() -> tuple[str, datetime]:
     browser_timezone = streamlit_js_eval(
         js_expressions="Intl.DateTimeFormat().resolvedOptions().timeZone",
@@ -232,6 +363,7 @@ def save_entry(payload: dict[str, Any]) -> None:
             )
     load_tracker.clear()
     load_food_daily.clear()
+    load_recipes.clear()
 
 
 def bool_icon(value: Any) -> str:
@@ -321,6 +453,29 @@ try:
 except Exception as exc:
     food_daily_error = exc
 
+recipes = pd.DataFrame()
+recipe_ingredients = pd.DataFrame()
+recipes_error = None
+try:
+    recipes, recipe_ingredients = load_recipes()
+except Exception as exc:
+    recipes_error = exc
+
+ingredients = pd.DataFrame()
+ingredients_error = None
+try:
+    ingredients = load_ingredients()
+except Exception as exc:
+    ingredients_error = exc
+
+todos = pd.DataFrame()
+todo_events = pd.DataFrame()
+todos_error = None
+try:
+    todos, todo_events = load_todos()
+except Exception as exc:
+    todos_error = exc
+
 if tracker.empty:
     st.warning("No Forge rows found in the database.")
     st.stop()
@@ -387,7 +542,7 @@ st.info(
     f"Week {int(selected_row['week_no'])}, Block {int(selected_row['block_no'])}, {selected_row['day_name']} — {selected_row['planned_session']}"
 )
 
-tab_log, tab_week, tab_trends, tab_food, tab_data = st.tabs(["Daily check-in", "Week view", "Trends", "Food", "Raw data"])
+tab_log, tab_week, tab_trends, tab_food, tab_meals, tab_todos, tab_ingredients, tab_data = st.tabs(["Daily check-in", "Week view", "Trends", "Food", "Meals", "Todos", "Ingredients", "Raw data"])
 
 with tab_log:
     with st.form("forge-daily-checkin"):
@@ -637,6 +792,208 @@ with tab_food:
             with st.expander("Latest day entry details"):
                 st.markdown(latest_entries)
 
+with tab_meals:
+    st.markdown("### Saved recipes")
+    if recipes_error is not None:
+        st.warning("Meals tab data is unavailable right now.")
+        st.caption(str(recipes_error))
+    elif recipes.empty:
+        st.caption("No saved recipes yet.")
+    else:
+        recipes_view = recipes.copy()
+        recipes_view["updated_at_local"] = pd.to_datetime(recipes_view["updated_at"], utc=True).dt.tz_convert(browser_timezone)
+
+        top_cols = st.columns(4)
+        top_cols[0].metric("Saved recipes", len(recipes_view))
+        top_cols[1].metric("Avg protein", f"{recipes_view['protein_g'].fillna(0).mean():.1f} g")
+        top_cols[2].metric("Avg calories", f"{recipes_view['calories'].fillna(0).mean():.0f} kcal")
+        top_cols[3].metric("Latest update", recipes_view['updated_at_local'].max().strftime('%Y-%m-%d'))
+
+        table = recipes_view[[
+            "recipe_name",
+            "category",
+            "total_amount_g",
+            "calories",
+            "protein_g",
+            "fat_g",
+            "carbs_g",
+            "fiber_g",
+            "tags",
+            "updated_at_local",
+        ]].copy()
+        table["tags"] = table["tags"].apply(lambda values: ", ".join(values or []))
+        table["updated_at_local"] = table["updated_at_local"].apply(
+            lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+        )
+        st.dataframe(table, use_container_width=True, hide_index=True)
+
+        recipe_names = recipes_view["recipe_name"].tolist()
+        selected_recipe_name = st.selectbox("Recipe details", recipe_names, key="recipe_select")
+        selected_recipe = recipes_view.loc[recipes_view["recipe_name"] == selected_recipe_name].iloc[0]
+        selected_recipe_ingredients = recipe_ingredients.loc[
+            recipe_ingredients["recipe_key"] == selected_recipe["recipe_key"]
+        ].copy()
+
+        detail_cols = st.columns(6)
+        detail_cols[0].metric("Total grams", f"{selected_recipe['total_amount_g']:.1f} g" if pd.notna(selected_recipe["total_amount_g"]) else "—")
+        detail_cols[1].metric("Calories", f"{selected_recipe['calories']:.0f}" if pd.notna(selected_recipe["calories"]) else "—")
+        detail_cols[2].metric("Protein", f"{selected_recipe['protein_g']:.1f} g" if pd.notna(selected_recipe["protein_g"]) else "—")
+        detail_cols[3].metric("Fat", f"{selected_recipe['fat_g']:.1f} g" if pd.notna(selected_recipe["fat_g"]) else "—")
+        detail_cols[4].metric("Carbs", f"{selected_recipe['carbs_g']:.1f} g" if pd.notna(selected_recipe["carbs_g"]) else "—")
+        detail_cols[5].metric("Fiber", f"{selected_recipe['fiber_g']:.1f} g" if pd.notna(selected_recipe["fiber_g"]) else "—")
+
+        if selected_recipe.get("notes"):
+            st.caption(selected_recipe["notes"])
+        if not selected_recipe_ingredients.empty:
+            ingredient_table = selected_recipe_ingredients[[
+                "sort_order",
+                "product_name",
+                "brand",
+                "amount_g",
+                "calories",
+                "protein_g",
+                "fat_g",
+                "carbs_g",
+                "fiber_g",
+                "notes",
+            ]].copy()
+            st.markdown("#### Recipe ingredients")
+            st.dataframe(ingredient_table, use_container_width=True, hide_index=True)
+
+with tab_todos:
+    st.markdown("### Todo system")
+    if todos_error is not None:
+        st.warning("Todo data is unavailable right now.")
+        st.caption(str(todos_error))
+    elif todos.empty:
+        st.caption("No todo rows synced yet.")
+    else:
+        todos_view = todos.copy()
+        todos_view["created_at_local"] = pd.to_datetime(todos_view["created_at"], utc=True, errors="coerce").dt.tz_convert(browser_timezone)
+        todos_view["updated_at_local"] = pd.to_datetime(todos_view["updated_at"], utc=True, errors="coerce").dt.tz_convert(browser_timezone)
+        todos_view["completed_at_local"] = pd.to_datetime(todos_view["completed_at"], utc=True, errors="coerce").dt.tz_convert(browser_timezone)
+
+        top_cols = st.columns(5)
+        top_cols[0].metric("Open", int(todos_view["is_open"].fillna(False).sum()))
+        top_cols[1].metric("In progress", int((todos_view["status"] == "in_progress").sum()))
+        top_cols[2].metric("Blocked", int((todos_view["status"] == "blocked").sum()))
+        top_cols[3].metric("Done", int((todos_view["status"] == "done").sum()))
+        top_cols[4].metric("Overdue", int(todos_view["is_overdue"].fillna(False).sum()))
+
+        todo_table = todos_view[[
+            "title",
+            "status",
+            "priority",
+            "area",
+            "due_date",
+            "tags",
+            "is_overdue",
+            "updated_at_local",
+        ]].copy()
+        todo_table["tags"] = todo_table["tags"].apply(lambda values: ", ".join(values or []))
+        todo_table["is_overdue"] = todo_table["is_overdue"].map(lambda value: "⚠️" if value else "")
+        todo_table["updated_at_local"] = todo_table["updated_at_local"].apply(
+            lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+        )
+        st.dataframe(todo_table, use_container_width=True, hide_index=True)
+
+        todo_titles = todos_view["title"].tolist()
+        selected_todo_title = st.selectbox("Todo details", todo_titles, key="todo_select")
+        selected_todo = todos_view.loc[todos_view["title"] == selected_todo_title].iloc[0]
+        selected_events = todo_events.loc[todo_events["task_key"] == selected_todo["task_key"]].copy() if not todo_events.empty else pd.DataFrame()
+
+        detail_cols = st.columns(5)
+        detail_cols[0].metric("Status", selected_todo["status"])
+        detail_cols[1].metric("Priority", selected_todo["priority"] or "—")
+        detail_cols[2].metric("Area", selected_todo["area"] or "—")
+        detail_cols[3].metric("Due", str(selected_todo["due_date"]) if pd.notna(selected_todo["due_date"]) else "—")
+        detail_cols[4].metric("Overdue", "Yes" if bool(selected_todo["is_overdue"]) else "No")
+
+        tags = selected_todo.get("tags") or []
+        if tags:
+            st.caption(f"Tags: {', '.join(tags)}")
+        if selected_todo.get("notes"):
+            st.caption(selected_todo["notes"])
+        if not selected_events.empty:
+            selected_events["event_at_local"] = pd.to_datetime(selected_events["event_at"], utc=True, errors="coerce").dt.tz_convert(browser_timezone)
+            selected_events["event_at_local"] = selected_events["event_at_local"].apply(
+                lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+            )
+            st.markdown("#### Recent task events")
+            st.dataframe(
+                selected_events[["event_at_local", "event_type", "details"]],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+with tab_ingredients:
+    st.markdown("### Ingredient catalog")
+    if ingredients_error is not None:
+        st.warning("Ingredients tab data is unavailable right now.")
+        st.caption(str(ingredients_error))
+    elif ingredients.empty:
+        st.caption("No ingredient records yet.")
+    else:
+        ingredients_view = ingredients.copy()
+        ingredients_view["updated_at_local"] = pd.to_datetime(ingredients_view["updated_at"], utc=True).dt.tz_convert(browser_timezone)
+
+        top_cols = st.columns(4)
+        top_cols[0].metric("Ingredients", len(ingredients_view))
+        top_cols[1].metric("With nicknames", int(ingredients_view["nicknames"].apply(lambda values: len(values or []) > 0).sum()))
+        top_cols[2].metric("Brands", ingredients_view["brand"].fillna("Unknown").nunique())
+        top_cols[3].metric("Latest update", ingredients_view["updated_at_local"].max().strftime('%Y-%m-%d'))
+
+        ingredient_table = ingredients_view[[
+            "product_name",
+            "brand",
+            "label_serving_text",
+            "label_serving_g",
+            "regular_portion_g",
+            "calories_per_100g",
+            "protein_g_per_100g",
+            "fat_g_per_100g",
+            "carbs_g_per_100g",
+            "fiber_g_per_100g",
+            "nicknames",
+            "source_kind",
+            "updated_at_local",
+        ]].copy()
+        ingredient_table["nicknames"] = ingredient_table["nicknames"].apply(lambda values: ", ".join(values or []))
+        ingredient_table["updated_at_local"] = ingredient_table["updated_at_local"].apply(
+            lambda value: value.strftime('%Y-%m-%d %H:%M:%S %Z') if pd.notna(value) else '—'
+        )
+        st.dataframe(ingredient_table, use_container_width=True, hide_index=True)
+
+        ingredient_labels = ingredients_view.apply(
+            lambda row: f"{row['product_name']} ({row['brand']})" if pd.notna(row['brand']) and row['brand'] else row['product_name'],
+            axis=1,
+        ).tolist()
+        selected_ingredient_label = st.selectbox("Ingredient details", ingredient_labels, key="ingredient_select")
+        selected_ingredient = ingredients_view.iloc[ingredient_labels.index(selected_ingredient_label)]
+
+        detail_cols = st.columns(6)
+        detail_cols[0].metric("Calories / 100g", f"{selected_ingredient['calories_per_100g']:.1f}" if pd.notna(selected_ingredient["calories_per_100g"]) else "—")
+        detail_cols[1].metric("Protein / 100g", f"{selected_ingredient['protein_g_per_100g']:.1f} g" if pd.notna(selected_ingredient["protein_g_per_100g"]) else "—")
+        detail_cols[2].metric("Fat / 100g", f"{selected_ingredient['fat_g_per_100g']:.1f} g" if pd.notna(selected_ingredient["fat_g_per_100g"]) else "—")
+        detail_cols[3].metric("Carbs / 100g", f"{selected_ingredient['carbs_g_per_100g']:.1f} g" if pd.notna(selected_ingredient["carbs_g_per_100g"]) else "—")
+        detail_cols[4].metric("Fiber / 100g", f"{selected_ingredient['fiber_g_per_100g']:.1f} g" if pd.notna(selected_ingredient["fiber_g_per_100g"]) else "—")
+        detail_cols[5].metric("Sodium / 100g", f"{selected_ingredient['sodium_mg_per_100g']:.0f} mg" if pd.notna(selected_ingredient["sodium_mg_per_100g"]) else "—")
+
+        st.caption(f"Label serving reference: {selected_ingredient['label_serving_text'] or '—'}")
+        if pd.notna(selected_ingredient['label_serving_g']):
+            st.caption(f"Label serving grams: {selected_ingredient['label_serving_g']:.1f} g")
+        if pd.notna(selected_ingredient['regular_portion_g']):
+            st.caption(f"Your regular portion: {selected_ingredient['regular_portion_g']:.1f} g")
+        nicknames = selected_ingredient.get("nicknames") or []
+        if nicknames:
+            st.caption(f"Nicknames: {', '.join(nicknames)}")
+        source_bits = [selected_ingredient.get("source_kind"), selected_ingredient.get("source_detail")]
+        source_text = " — ".join([bit for bit in source_bits if bit])
+        if source_text:
+            st.caption(f"Source: {source_text}")
+        if selected_ingredient.get("notes"):
+            st.caption(selected_ingredient["notes"])
+
 with tab_data:
     raw = tracker.copy()
     raw["entry_date"] = raw["entry_date"].astype(str)
@@ -656,3 +1013,41 @@ with tab_data:
         food_raw["updated_at"] = pd.to_datetime(food_raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         st.markdown("### Food raw data")
         st.dataframe(food_raw, use_container_width=True, hide_index=True)
+
+    if recipes_error is not None:
+        st.markdown("### Recipe raw data")
+        st.caption("Unavailable because the recipe query failed.")
+    elif not recipes.empty:
+        recipes_raw = recipes.copy()
+        recipes_raw["updated_at"] = pd.to_datetime(recipes_raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        st.markdown("### Recipe raw data")
+        st.dataframe(recipes_raw, use_container_width=True, hide_index=True)
+        if not recipe_ingredients.empty:
+            recipe_ingredients_raw = recipe_ingredients.copy()
+            recipe_ingredients_raw["updated_at"] = pd.to_datetime(recipe_ingredients_raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+            st.markdown("### Recipe ingredient raw data")
+            st.dataframe(recipe_ingredients_raw, use_container_width=True, hide_index=True)
+
+    if todos_error is not None:
+        st.markdown("### Todo raw data")
+        st.caption("Unavailable because the todo query failed.")
+    elif not todos.empty:
+        todos_raw = todos.copy()
+        for col in ["created_at", "updated_at", "completed_at"]:
+            todos_raw[col] = pd.to_datetime(todos_raw[col], utc=True, errors="coerce").dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        st.markdown("### Todo raw data")
+        st.dataframe(todos_raw, use_container_width=True, hide_index=True)
+        if not todo_events.empty:
+            todo_events_raw = todo_events.copy()
+            todo_events_raw["event_at"] = pd.to_datetime(todo_events_raw["event_at"], utc=True, errors="coerce").dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+            st.markdown("### Todo event raw data")
+            st.dataframe(todo_events_raw, use_container_width=True, hide_index=True)
+
+    if ingredients_error is not None:
+        st.markdown("### Ingredient raw data")
+        st.caption("Unavailable because the ingredient query failed.")
+    elif not ingredients.empty:
+        ingredients_raw = ingredients.copy()
+        ingredients_raw["updated_at"] = pd.to_datetime(ingredients_raw["updated_at"], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        st.markdown("### Ingredient raw data")
+        st.dataframe(ingredients_raw, use_container_width=True, hide_index=True)
