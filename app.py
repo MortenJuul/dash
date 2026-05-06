@@ -99,9 +99,13 @@ with st.sidebar:
     food_row = food_match.iloc[0] if not food_match.empty else None
 
     st.markdown("#### At a glance")
-    checks_done = int(selected_row["completed_checks"] or 0)
-    st.progress(min(checks_done, 8) / 8, text=f"Forge checks: {checks_done}/8")
+    required_checks = 8 + (1 if selected_row.get("scale_available") is True else 0)
+    checks_done = min(int(selected_row["completed_checks"] or 0), required_checks)
+    st.progress(checks_done / required_checks, text=f"Forge checks: {checks_done}/{required_checks}")
     st.metric("Strikes", int(selected_row["strikes_today"] or 0))
+    if pd.notna(selected_row.get("weight")):
+        weight_unit = selected_row.get("weight_unit") if pd.notna(selected_row.get("weight_unit")) else "kg"
+        st.metric("Weight", f"{selected_row['weight']:.2f} {weight_unit}")
     if food_row is not None:
         st.metric("Protein", f"{food_row['protein_g']:.1f} g", f"{food_row['protein_remaining_g']:.1f} g left")
         st.metric("Water", f"{food_row['water_liters']:.2f} L", f"{food_row['water_remaining_liters']:.2f} L left")
@@ -115,7 +119,7 @@ with st.sidebar:
 if section == "Home":
     render_today(tracker, food_daily, todos, browser_timezone, selected_date)
 elif section == "Forge":
-    render_forge(tracker)
+    render_forge(tracker, selected_date)
 elif section == "Food":
     render_food(
         food_daily,

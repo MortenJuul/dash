@@ -5,13 +5,14 @@ from dash_app.config import REVIEW_GATES
 from dash_app.formatting import bool_icon, format_local_dt
 
 
-def render_forge(tracker: pd.DataFrame) -> None:
+def render_forge(tracker: pd.DataFrame, selected_date) -> None:
     st.subheader("Forge")
     st.caption("Challenge status, weekly execution, and trends.")
 
     total_strikes = int(tracker["strikes_today"].fillna(0).sum())
     days_complete = int((tracker["completed_checks"].fillna(0) >= 8).sum())
-    current = tracker.iloc[-1]
+    selected_match = tracker.loc[tracker["entry_date"] == selected_date]
+    current = selected_match.iloc[0] if not selected_match.empty else tracker.iloc[-1]
 
     kpi = st.columns(4)
     kpi[0].metric("Status", "Failed" if total_strikes >= 3 else "Live", f"{max(0, 3 - total_strikes)} strikes left")
@@ -24,15 +25,18 @@ def render_forge(tracker: pd.DataFrame) -> None:
             st.write(f"- {gate.isoformat()}")
 
     week_options = sorted(tracker["week_no"].dropna().unique().tolist())
-    selected_week = st.selectbox("Week", week_options, index=len(week_options) - 1)
+    current_week = current["week_no"] if pd.notna(current.get("week_no")) else week_options[-1]
+    default_index = week_options.index(current_week) if current_week in week_options else len(week_options) - 1
+    selected_week = st.selectbox("Week", week_options, index=default_index)
     week_df = tracker.loc[tracker["week_no"] == selected_week].copy()
 
     display = week_df[[
         "entry_date", "day_name", "planned_session", "workout_done", "steps_goal_hit",
         "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken",
-        "progress_photo", "strikes_today", "cumulative_strikes", "updated_at_local",
+        "progress_photo", "weigh_in", "weight", "weight_unit", "strikes_today",
+        "cumulative_strikes", "updated_at_local",
     ]].copy()
-    for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken", "progress_photo"]:
+    for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken", "progress_photo", "weigh_in"]:
         display[col] = display[col].map(bool_icon)
     display["updated_at_local"] = display["updated_at_local"].apply(format_local_dt)
     st.dataframe(display, use_container_width=True, hide_index=True)

@@ -45,6 +45,10 @@ def sql_text(value: str) -> str:
         return 'null'
     return "'" + value.replace("'", "''") + "'"
 
+
+def get(row: dict[str, str], key: str) -> str:
+    return row.get(key, '')
+
 rows = []
 with CSV_PATH.open(newline='') as f:
     reader = csv.DictReader(f)
@@ -70,9 +74,10 @@ for row in rows:
         sql_bool(row['hydration_3l']),
         sql_bool(row['creatine_3_to_5g']),
         sql_bool(row['progress_photo']),
+        sql_bool(get(row, 'scale_available')),
         sql_bool(row['weigh_in']),
         sql_num(row['weight']),
-        'null',
+        sql_text(get(row, 'weight_unit')),
         sql_int(row['strikes_today']),
         sql_int(row['cumulative_strikes']),
         sql_text(row['notes']),
@@ -83,7 +88,7 @@ insert into challenge.forge_daily (
   entry_date, week_no, block_no, day_name, planned_session,
   workout_done, steps_count, steps_goal_hit, protein_g, protein_goal_hit,
   no_snacks_or_grazing, food_logged, water_liters, hydration_goal_hit,
-  creatine_taken, progress_photo, weigh_in, weight, weight_unit,
+  creatine_taken, progress_photo, scale_available, weigh_in, weight, weight_unit,
   strikes_today, cumulative_strikes, notes
 )
 values
@@ -102,8 +107,10 @@ on conflict (entry_date) do update set
   hydration_goal_hit = excluded.hydration_goal_hit,
   creatine_taken = excluded.creatine_taken,
   progress_photo = excluded.progress_photo,
+  scale_available = excluded.scale_available,
   weigh_in = excluded.weigh_in,
   weight = excluded.weight,
+  weight_unit = excluded.weight_unit,
   strikes_today = excluded.strikes_today,
   cumulative_strikes = excluded.cumulative_strikes,
   notes = excluded.notes;

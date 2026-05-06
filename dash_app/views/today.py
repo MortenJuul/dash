@@ -18,6 +18,22 @@ FORGE_CHECKS = [
 ]
 
 
+def _required_check_count(row: pd.Series) -> int:
+    return len(FORGE_CHECKS) + (1 if row.get("scale_available") is True else 0)
+
+
+def _completed_check_count(row: pd.Series) -> int:
+    value = int(row["completed_checks"] or 0)
+    return min(value, _required_check_count(row))
+
+
+def _format_weight(row: pd.Series) -> str:
+    if pd.isna(row.get("weight")):
+        return "—"
+    unit = row.get("weight_unit") if pd.notna(row.get("weight_unit")) else "kg"
+    return f"{float(row['weight']):.2f} {unit}"
+
+
 def _safe_progress(value: float, target: float) -> float:
     if not target or pd.isna(value):
         return 0.0
@@ -46,7 +62,7 @@ def _attention_items(row: pd.Series, food_row: pd.Series | None, open_todos: pd.
     for col, label in [("food_logged", "Food not marked complete"), ("creatine_taken", "Creatine"), ("progress_photo", "Progress photo")]:
         if row.get(col) is not True:
             items.append(label)
-    if bool(row.get("scale_available")) and row.get("weigh_in") is not True:
+    if row.get("scale_available") is True and row.get("weigh_in") is not True:
         items.append("Weigh-in missing")
     if food_row is not None and pd.notna(food_row.get("protein_remaining_g")) and food_row["protein_remaining_g"] > 0:
         items.append(f"Food protein left: {food_row['protein_remaining_g']:.1f} g")
@@ -63,16 +79,19 @@ def _attention_items(row: pd.Series, food_row: pd.Series | None, open_todos: pd.
 
 
 def _render_challenge_card(row: pd.Series) -> None:
-    checks_done = int(row["completed_checks"] or 0)
+    checks_done = _completed_check_count(row)
+    required_checks = _required_check_count(row)
     st.markdown("#### Challenge")
-    st.progress(_safe_progress(checks_done, len(FORGE_CHECKS)), text=f"{checks_done}/{len(FORGE_CHECKS)} Forge checks")
-    c1, c2 = st.columns(2)
+    st.progress(_safe_progress(checks_done, required_checks), text=f"{checks_done}/{required_checks} Forge checks")
+    c1, c2, c3 = st.columns(3)
     c1.metric("Session", row["planned_session"])
     c2.metric("Strikes", int(row["strikes_today"] or 0), f"{int(row['cumulative_strikes'] or 0)} total")
+    c3.metric("Weight", _format_weight(row), "logged" if row.get("weigh_in") is True else "not logged")
 
-    checklist = pd.DataFrame(
-        [{"Check": label, "Done": bool_icon(row.get(column))} for column, label in FORGE_CHECKS]
-    )
+    checklist_rows = [{"Check": label, "Done": bool_icon(row.get(column))} for column, label in FORGE_CHECKS]
+    if row.get("scale_available") is True:
+        checklist_rows.append({"Check": "Weigh-in", "Done": bool_icon(row.get("weigh_in"))})
+    checklist = pd.DataFrame(checklist_rows)
     st.dataframe(checklist, use_container_width=True, hide_index=True, height=315)
 
 
