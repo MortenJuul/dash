@@ -1,9 +1,9 @@
 import pandas as pd
 import streamlit as st
 
-from dash_app.config import CHALLENGE_END, CHALLENGE_START, HYDRATION_GOAL_L, PROTEIN_GOAL_G, STEP_GOAL
+from dash_app.config import HYDRATION_GOAL_L, PROTEIN_GOAL_G, STEP_GOAL
 from dash_app.data import save_forge_entry
-from dash_app.formatting import challenge_day, format_local_dt, format_status
+from dash_app.formatting import format_local_dt, format_status
 
 
 def _missing_items(row: pd.Series, latest_food: pd.Series | None, open_todos: pd.DataFrame) -> list[str]:
@@ -44,23 +44,8 @@ def render_today(
     food_daily: pd.DataFrame,
     todos: pd.DataFrame,
     browser_timezone: str,
-    browser_today,
+    selected_date,
 ) -> None:
-    st.subheader("Today")
-    st.caption("Command center: what matters now, then the details if you need them.")
-
-    default_date = min(max(browser_today, CHALLENGE_START), CHALLENGE_END)
-    available_dates = set(tracker["entry_date"].tolist())
-    if default_date not in available_dates:
-        default_date = tracker.iloc[-1]["entry_date"]
-
-    selected_date = st.date_input(
-        "Review / update date",
-        value=default_date,
-        min_value=CHALLENGE_START,
-        max_value=CHALLENGE_END,
-        key="today_date",
-    )
     selected_match = tracker.loc[tracker["entry_date"] == selected_date]
     if selected_match.empty:
         st.warning("No Forge row exists for that date yet.")
@@ -77,16 +62,7 @@ def render_today(
     if not todos.empty:
         open_todos = todos.loc[todos["is_open"].fillna(False)].copy()
 
-    kpi = st.columns(5)
-    kpi[0].metric("Challenge day", challenge_day(row["entry_date"]))
-    kpi[1].metric("Session", row["planned_session"])
-    kpi[2].metric("Strikes today", int(row["strikes_today"] or 0))
-    if food_for_day is not None:
-        kpi[3].metric("Food protein", f"{food_for_day['protein_g']:.1f} g", f"{food_for_day['protein_remaining_g']:.1f} g left")
-        kpi[4].metric("Water", f"{food_for_day['water_liters']:.2f} L", f"{food_for_day['water_remaining_liters']:.2f} L left")
-    else:
-        kpi[3].metric("Food protein", "No food row")
-        kpi[4].metric("Water", "No food row")
+    st.caption(f"{row['day_name']} — {row['planned_session']}")
 
     attention = _missing_items(row, food_for_day, open_todos)
     if attention:
@@ -96,7 +72,7 @@ def render_today(
     else:
         st.success("Nothing obvious is screaming. Suspicious, but good.")
 
-    with st.expander("Update Forge checklist", expanded=True):
+    with st.expander("Update Forge checklist", expanded=not not attention):
         with st.form("forge-daily-checkin"):
             c1, c2 = st.columns(2)
             with c1:

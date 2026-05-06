@@ -12,9 +12,15 @@ from dash_app.views.today import render_today
 
 
 st.set_page_config(page_title="The 12-Week Forge", page_icon=":bar_chart:", layout="wide")
-
-st.title("The 12-Week Forge")
-st.caption("Today first. Details when needed. Raw tables banished to the basement where they belong.")
+st.markdown(
+    """
+    <style>
+      .block-container { padding-top: 1.25rem; padding-bottom: 2rem; }
+      [data-testid="stSidebarHeader"] { height: 0; padding: 0; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 if not DATABASE_URL:
     st.error("DATABASE_URL is not configured for this app yet.")
@@ -65,22 +71,49 @@ try:
 except Exception as exc:
     todos_error = exc
 
+default_date = min(max(browser_now.date(), tracker["entry_date"].min()), tracker["entry_date"].max())
+if default_date not in set(tracker["entry_date"].tolist()):
+    default_date = tracker.iloc[-1]["entry_date"]
+
 latest_update = tracker["updated_at_local"].dropna().max()
 with st.sidebar:
-    st.header("System")
+    st.markdown("## The 12-Week Forge")
+    st.caption("Daily operating dashboard")
+    section = st.radio(
+        "Section",
+        ["Today", "Forge", "Food", "Planning", "Admin"],
+        index=0,
+        label_visibility="collapsed",
+    )
+    st.divider()
+    selected_date = st.date_input(
+        "Date",
+        value=default_date,
+        min_value=tracker["entry_date"].min(),
+        max_value=tracker["entry_date"].max(),
+        key="global_date",
+    )
+    selected_match = tracker.loc[tracker["entry_date"] == selected_date]
+    selected_row = selected_match.iloc[0] if not selected_match.empty else tracker.iloc[-1]
+    food_match = food_daily.loc[food_daily["entry_date"] == selected_date] if not food_daily.empty else pd.DataFrame()
+    food_row = food_match.iloc[0] if not food_match.empty else None
+
+    st.markdown("#### At a glance")
+    checks_done = int(selected_row["completed_checks"] or 0)
+    st.progress(min(checks_done, 8) / 8, text=f"Forge checks: {checks_done}/8")
+    st.metric("Strikes", int(selected_row["strikes_today"] or 0))
+    if food_row is not None:
+        st.metric("Protein", f"{food_row['protein_g']:.1f} g", f"{food_row['protein_remaining_g']:.1f} g left")
+        st.metric("Water", f"{food_row['water_liters']:.2f} L", f"{food_row['water_remaining_liters']:.2f} L left")
+    else:
+        st.caption("No food row for selected date")
+    st.divider()
     st.caption(f"Timezone: {browser_timezone}")
     if pd.notna(latest_update):
-        st.caption(f"Latest Forge update: {latest_update.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    st.caption("Dash sections are grouped by job-to-be-done, not database table.")
-
-section = st.sidebar.radio(
-    "Section",
-    ["Today", "Forge", "Food", "Planning", "Admin"],
-    index=0,
-)
+        st.caption(f"Updated: {latest_update.strftime('%Y-%m-%d %H:%M %Z')}")
 
 if section == "Today":
-    render_today(tracker, food_daily, todos, browser_timezone, browser_now.date())
+    render_today(tracker, food_daily, todos, browser_timezone, selected_date)
 elif section == "Forge":
     render_forge(tracker)
 elif section == "Food":
