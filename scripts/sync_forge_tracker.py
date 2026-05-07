@@ -78,6 +78,11 @@ for row in rows:
         sql_bool(row['weigh_in']),
         sql_num(row['weight']),
         sql_text(get(row, 'weight_unit')),
+        sql_num(get(row, 'bmi')),
+        sql_num(get(row, 'body_fat_pct')),
+        sql_num(get(row, 'skeletal_muscle_pct')),
+        sql_num(get(row, 'body_water_pct')),
+        sql_int(get(row, 'bmr_kcal')),
         sql_int(row['strikes_today']),
         sql_int(row['cumulative_strikes']),
         sql_text(row['notes']),
@@ -89,6 +94,7 @@ insert into challenge.forge_daily (
   workout_done, steps_count, steps_goal_hit, protein_g, protein_goal_hit,
   no_snacks_or_grazing, food_logged, water_liters, hydration_goal_hit,
   creatine_taken, progress_photo, scale_available, weigh_in, weight, weight_unit,
+  bmi, body_fat_pct, skeletal_muscle_pct, body_water_pct, bmr_kcal,
   strikes_today, cumulative_strikes, notes
 )
 values
@@ -111,6 +117,11 @@ on conflict (entry_date) do update set
   weigh_in = excluded.weigh_in,
   weight = excluded.weight,
   weight_unit = excluded.weight_unit,
+  bmi = excluded.bmi,
+  body_fat_pct = excluded.body_fat_pct,
+  skeletal_muscle_pct = excluded.skeletal_muscle_pct,
+  body_water_pct = excluded.body_water_pct,
+  bmr_kcal = excluded.bmr_kcal,
   strikes_today = excluded.strikes_today,
   cumulative_strikes = excluded.cumulative_strikes,
   notes = excluded.notes;

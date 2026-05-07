@@ -21,6 +21,11 @@ create table if not exists challenge.forge_daily (
   weigh_in boolean,
   weight numeric(7,2),
   weight_unit text,
+  bmi numeric(5,2),
+  body_fat_pct numeric(5,2),
+  skeletal_muscle_pct numeric(5,2),
+  body_water_pct numeric(5,2),
+  bmr_kcal integer,
   strikes_today integer,
   cumulative_strikes integer,
   notes text,
@@ -30,6 +35,12 @@ create table if not exists challenge.forge_daily (
 
 create index if not exists forge_daily_week_idx on challenge.forge_daily (week_no, entry_date);
 create index if not exists forge_daily_block_idx on challenge.forge_daily (block_no, entry_date);
+
+alter table challenge.forge_daily add column if not exists bmi numeric(5,2);
+alter table challenge.forge_daily add column if not exists body_fat_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists skeletal_muscle_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists body_water_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists bmr_kcal integer;
 
 create or replace function challenge.touch_updated_at()
 returns trigger
@@ -46,7 +57,8 @@ create trigger forge_daily_touch_updated_at
 before update on challenge.forge_daily
 for each row execute function challenge.touch_updated_at();
 
-create or replace view challenge.forge_daily_status as
+drop view if exists challenge.forge_daily_status;
+create view challenge.forge_daily_status as
 select
   entry_date,
   week_no,
@@ -68,6 +80,11 @@ select
   weigh_in,
   weight,
   weight_unit,
+  bmi,
+  body_fat_pct,
+  skeletal_muscle_pct,
+  body_water_pct,
+  bmr_kcal,
   strikes_today,
   cumulative_strikes,
   (

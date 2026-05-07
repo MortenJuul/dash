@@ -43,6 +43,28 @@ def _single_series_chart(frame: pd.DataFrame, column: str, label: str, suffix: s
     return (base.mark_line(strokeWidth=2.5) + base.mark_circle(size=70)).properties(height=230)
 
 
+def _latest_metric_delta(frame: pd.DataFrame, column: str) -> tuple[float | None, float | None]:
+    values = pd.to_numeric(frame[column], errors="coerce").dropna()
+    if values.empty:
+        return None, None
+    latest = float(values.iloc[-1])
+    previous = float(values.iloc[-2]) if len(values) > 1 else None
+    return latest, (latest - previous) if previous is not None else None
+
+
+def _metric_value(value: float | None, suffix: str = "", decimals: int = 1) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{value:.{decimals}f}{suffix}"
+
+
+def _metric_delta(delta: float | None, suffix: str = "", decimals: int = 1, invert: bool = False) -> str | None:
+    if delta is None or pd.isna(delta):
+        return None
+    shown = -delta if invert else delta
+    return f"{shown:+.{decimals}f}{suffix}"
+
+
 def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame | None = None) -> None:
     st.subheader("Forge")
     st.caption("Challenge status, weekly execution, and trends.")
@@ -58,6 +80,44 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
     kpi[2].metric("Days fully clean", days_complete)
     kpi[3].metric("Current week", int(current["week_no"]))
 
+    weighins = tracker.loc[(tracker["entry_date"] <= selected_date) & tracker["weight"].notna()].copy()
+    if not weighins.empty:
+        weighins = weighins.sort_values("entry_date")
+        first_weight = float(weighins.iloc[0]["weight"])
+        latest_weight = float(weighins.iloc[-1]["weight"])
+        previous_weight = float(weighins.iloc[-2]["weight"]) if len(weighins) > 1 else None
+        weight_lost = first_weight - latest_weight
+        weight_unit = weighins.iloc[-1].get("weight_unit") if pd.notna(weighins.iloc[-1].get("weight_unit")) else "kg"
+
+        st.markdown("#### Weigh-in stats")
+        stats = st.columns(4)
+        stats[0].metric("Weight lost", f"{weight_lost:.2f} {weight_unit}", "since first Forge weigh-in")
+        stats[1].metric(
+            "Latest weight",
+            f"{latest_weight:.2f} {weight_unit}",
+            f"{latest_weight - previous_weight:+.2f} vs prior" if previous_weight is not None else None,
+            delta_color="inverse",
+        )
+        latest_bmi, bmi_delta = _latest_metric_delta(weighins, "bmi")
+        latest_body_fat, body_fat_delta = _latest_metric_delta(weighins, "body_fat_pct")
+        stats[2].metric("BMI", _metric_value(latest_bmi), _metric_delta(bmi_delta, decimals=1), delta_color="inverse")
+        stats[3].metric("Body fat", _metric_value(latest_body_fat, "%"), _metric_delta(body_fat_delta, "%"), delta_color="inverse")
+
+        with st.expander("More scale metrics", expanded=True):
+            metric_cols = st.columns(3)
+            latest_muscle, muscle_delta = _latest_metric_delta(weighins, "skeletal_muscle_pct")
+            latest_water, water_delta = _latest_metric_delta(weighins, "body_water_pct")
+            latest_bmr, bmr_delta = _latest_metric_delta(weighins, "bmr_kcal")
+            metric_cols[0].metric("Skeletal muscle", _metric_value(latest_muscle, "%"), _metric_delta(muscle_delta, "%"))
+            metric_cols[1].metric("Body water", _metric_value(latest_water, "%"), _metric_delta(water_delta, "%"))
+            metric_cols[2].metric("BMR", _metric_value(latest_bmr, " kcal", 0), _metric_delta(bmr_delta, " kcal", 0))
+            metric_cols = st.columns(3)
+            metric_cols[0].metric("First weigh-in", f"{first_weight:.2f} {weight_unit}")
+            metric_cols[1].metric("Weigh-ins logged", len(weighins))
+            metric_cols[2].metric("Average / week", f"{(weight_lost / max((weighins.iloc[-1]['entry_date'] - weighins.iloc[0]['entry_date']).days, 1) * 7):.2f} {weight_unit}")
+            detail_cols = ["entry_date", "weight", "weight_unit", "bmi", "body_fat_pct", "skeletal_muscle_pct", "body_water_pct", "bmr_kcal"]
+            st.dataframe(weighins[detail_cols], use_container_width=True, hide_index=True)
+
     with st.expander("Review gates", expanded=False):
         for gate in REVIEW_GATES:
             st.write(f"- {gate.isoformat()}")
@@ -71,7 +131,8 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
     display = week_df[[
         "entry_date", "day_name", "planned_session", "workout_done", "steps_goal_hit",
         "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken",
-        "progress_photo", "weigh_in", "weight", "weight_unit", "strikes_today",
+        "progress_photo", "weigh_in", "weight", "weight_unit", "bmi", "body_fat_pct",
+        "skeletal_muscle_pct", "body_water_pct", "bmr_kcal", "strikes_today",
         "cumulative_strikes", "updated_at_local",
     ]].copy()
     for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken", "progress_photo", "weigh_in"]:
@@ -81,7 +142,7 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
 
     st.markdown("#### Trends")
     st.caption("Showing logged days up to the selected date; future challenge rows are excluded.")
-    tracker_trends = _trend_frame(tracker, selected_date, ["weight", "strikes_today", "cumulative_strikes"])
+    tracker_trends = _trend_frame(tracker, selected_date, ["weight", "bmi", "body_fat_pct", "skeletal_muscle_pct", "body_water_pct", "bmr_kcal", "strikes_today", "cumulative_strikes"])
     challenge_start = tracker["entry_date"].min()
     if food_daily is not None and not food_daily.empty:
         nutrition_source = food_daily.loc[food_daily["entry_date"] >= challenge_start]
@@ -127,3 +188,19 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
             st.altair_chart(chart, use_container_width=True)
         else:
             st.caption("No strike data logged yet.")
+    with st.expander("Scale metric trends", expanded=False):
+        body_left, body_right = st.columns(2)
+        with body_left:
+            st.markdown("Body fat")
+            chart = _single_series_chart(tracker_trends, "body_fat_pct", "Body fat", "%")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No body-fat readings logged yet.")
+            st.markdown("Skeletal muscle")
+            chart = _single_series_chart(tracker_trends, "skeletal_muscle_pct", "Skeletal muscle", "%")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No skeletal-muscle readings logged yet.")
+        with body_right:
+            st.markdown("Body water")
+            chart = _single_series_chart(tracker_trends, "body_water_pct", "Body water", "%")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No body-water readings logged yet.")
+            st.markdown("BMR")
+            chart = _single_series_chart(tracker_trends, "bmr_kcal", "BMR", " kcal")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No BMR readings logged yet.")
