@@ -26,6 +26,12 @@ if not DATABASE_URL:
     st.error("DATABASE_URL is not configured for this app yet.")
     st.stop()
 
+with st.sidebar:
+    if st.button("Refresh data", icon=":material/refresh:", use_container_width=True):
+        st.cache_data.clear()
+        st.toast("Data refreshed")
+        st.rerun()
+
 browser_timezone, browser_now = get_browser_context()
 
 try:
