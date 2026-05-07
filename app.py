@@ -16,7 +16,6 @@ st.markdown(
     """
     <style>
       .block-container { padding-top: 1.25rem; padding-bottom: 2rem; }
-      [data-testid="stSidebarHeader"] { height: 0; padding: 0; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -25,12 +24,6 @@ st.markdown(
 if not DATABASE_URL:
     st.error("DATABASE_URL is not configured for this app yet.")
     st.stop()
-
-with st.sidebar:
-    if st.button("Refresh data", icon=":material/refresh:", use_container_width=True):
-        st.cache_data.clear()
-        st.toast("Data refreshed")
-        st.rerun()
 
 browser_timezone, browser_now = get_browser_context()
 
@@ -83,7 +76,12 @@ if default_date not in set(tracker["entry_date"].tolist()):
 
 latest_update = tracker["updated_at_local"].dropna().max()
 with st.sidebar:
-    st.markdown("## The 12-Week Forge")
+    title_col, refresh_col = st.columns([0.88, 0.12], vertical_alignment="center")
+    title_col.markdown("## The 12-Week Forge")
+    if refresh_col.button("↻", help="Refresh data", key="refresh_data", type="tertiary"):
+        st.cache_data.clear()
+        st.toast("Data refreshed")
+        st.rerun()
     st.caption("Daily operating dashboard")
     section = st.radio(
         "Section",
