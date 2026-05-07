@@ -19,7 +19,9 @@ def load_tracker() -> pd.DataFrame:
                   protein_goal_hit, no_snacks_or_grazing, food_logged,
                   water_liters, hydration_goal_hit, creatine_taken,
                   progress_photo, scale_available, weigh_in, weight, weight_unit,
-                  bmi, body_fat_pct, skeletal_muscle_pct, body_water_pct, bmr_kcal,
+                  bmi, body_fat_pct, subcutaneous_fat_pct, visceral_fat,
+                  skeletal_muscle_pct, muscle_mass_kg, fat_free_body_weight_kg,
+                  body_water_pct, bone_mass_kg, protein_pct, bmr_kcal, metabolic_age,
                   strikes_today, cumulative_strikes, completed_checks, notes, updated_at
                 from challenge.forge_daily_status
                 order by entry_date

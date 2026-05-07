@@ -112,10 +112,30 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
             metric_cols[1].metric("Body water", _metric_value(latest_water, "%"), _metric_delta(water_delta, "%"))
             metric_cols[2].metric("BMR", _metric_value(latest_bmr, " kcal", 0), _metric_delta(bmr_delta, " kcal", 0))
             metric_cols = st.columns(3)
-            metric_cols[0].metric("First weigh-in", f"{first_weight:.2f} {weight_unit}")
+            latest_subq, subq_delta = _latest_metric_delta(weighins, "subcutaneous_fat_pct")
+            latest_visceral, visceral_delta = _latest_metric_delta(weighins, "visceral_fat")
+            latest_protein, protein_delta = _latest_metric_delta(weighins, "protein_pct")
+            metric_cols[0].metric("Subcutaneous fat", _metric_value(latest_subq, "%"), _metric_delta(subq_delta, "%"), delta_color="inverse")
+            metric_cols[1].metric("Visceral fat", _metric_value(latest_visceral, decimals=0), _metric_delta(visceral_delta, decimals=0), delta_color="inverse")
+            metric_cols[2].metric("Protein", _metric_value(latest_protein, "%"), _metric_delta(protein_delta, "%"))
+            metric_cols = st.columns(3)
+            latest_muscle_mass, muscle_mass_delta = _latest_metric_delta(weighins, "muscle_mass_kg")
+            latest_ffm, ffm_delta = _latest_metric_delta(weighins, "fat_free_body_weight_kg")
+            latest_bone, bone_delta = _latest_metric_delta(weighins, "bone_mass_kg")
+            metric_cols[0].metric("Muscle mass", _metric_value(latest_muscle_mass, " kg"), _metric_delta(muscle_mass_delta, " kg"))
+            metric_cols[1].metric("Fat-free mass", _metric_value(latest_ffm, " kg"), _metric_delta(ffm_delta, " kg"))
+            metric_cols[2].metric("Bone mass", _metric_value(latest_bone, " kg"), _metric_delta(bone_delta, " kg"))
+            metric_cols = st.columns(3)
+            latest_met_age, met_age_delta = _latest_metric_delta(weighins, "metabolic_age")
+            metric_cols[0].metric("Metabolic age", _metric_value(latest_met_age, decimals=0), _metric_delta(met_age_delta, decimals=0), delta_color="inverse")
             metric_cols[1].metric("Weigh-ins logged", len(weighins))
-            metric_cols[2].metric("Average / week", f"{(weight_lost / max((weighins.iloc[-1]['entry_date'] - weighins.iloc[0]['entry_date']).days, 1) * 7):.2f} {weight_unit}")
-            detail_cols = ["entry_date", "weight", "weight_unit", "bmi", "body_fat_pct", "skeletal_muscle_pct", "body_water_pct", "bmr_kcal"]
+            avg_week = weight_lost / max((weighins.iloc[-1]["entry_date"] - weighins.iloc[0]["entry_date"]).days, 1) * 7
+            metric_cols[2].metric("Average / week", f"{avg_week:.2f} {weight_unit}")
+            detail_cols = [
+                "entry_date", "weight", "weight_unit", "bmi", "body_fat_pct", "subcutaneous_fat_pct",
+                "visceral_fat", "skeletal_muscle_pct", "muscle_mass_kg", "fat_free_body_weight_kg",
+                "body_water_pct", "bone_mass_kg", "protein_pct", "bmr_kcal", "metabolic_age",
+            ]
             st.dataframe(weighins[detail_cols], use_container_width=True, hide_index=True)
 
     with st.expander("Review gates", expanded=False):
@@ -132,7 +152,9 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
         "entry_date", "day_name", "planned_session", "workout_done", "steps_goal_hit",
         "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken",
         "progress_photo", "weigh_in", "weight", "weight_unit", "bmi", "body_fat_pct",
-        "skeletal_muscle_pct", "body_water_pct", "bmr_kcal", "strikes_today",
+        "subcutaneous_fat_pct", "visceral_fat", "skeletal_muscle_pct", "muscle_mass_kg",
+        "fat_free_body_weight_kg", "body_water_pct", "bone_mass_kg", "protein_pct",
+        "bmr_kcal", "metabolic_age", "strikes_today",
         "cumulative_strikes", "updated_at_local",
     ]].copy()
     for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken", "progress_photo", "weigh_in"]:
@@ -142,7 +164,16 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
 
     st.markdown("#### Trends")
     st.caption("Showing logged days up to the selected date; future challenge rows are excluded.")
-    tracker_trends = _trend_frame(tracker, selected_date, ["weight", "bmi", "body_fat_pct", "skeletal_muscle_pct", "body_water_pct", "bmr_kcal", "strikes_today", "cumulative_strikes"])
+    tracker_trends = _trend_frame(
+        tracker,
+        selected_date,
+        [
+            "weight", "bmi", "body_fat_pct", "subcutaneous_fat_pct", "visceral_fat",
+            "skeletal_muscle_pct", "muscle_mass_kg", "fat_free_body_weight_kg",
+            "body_water_pct", "bone_mass_kg", "protein_pct", "bmr_kcal", "metabolic_age",
+            "strikes_today", "cumulative_strikes",
+        ],
+    )
     challenge_start = tracker["entry_date"].min()
     if food_daily is not None and not food_daily.empty:
         nutrition_source = food_daily.loc[food_daily["entry_date"] >= challenge_start]
@@ -197,6 +228,15 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
             st.markdown("Skeletal muscle")
             chart = _single_series_chart(tracker_trends, "skeletal_muscle_pct", "Skeletal muscle", "%")
             st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No skeletal-muscle readings logged yet.")
+            st.markdown("Subcutaneous fat")
+            chart = _single_series_chart(tracker_trends, "subcutaneous_fat_pct", "Subcutaneous fat", "%")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No subcutaneous-fat readings logged yet.")
+            st.markdown("Muscle mass")
+            chart = _single_series_chart(tracker_trends, "muscle_mass_kg", "Muscle mass", " kg")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No muscle-mass readings logged yet.")
+            st.markdown("Protein")
+            chart = _single_series_chart(tracker_trends, "protein_pct", "Protein", "%")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No scale protein readings logged yet.")
         with body_right:
             st.markdown("Body water")
             chart = _single_series_chart(tracker_trends, "body_water_pct", "Body water", "%")
@@ -204,3 +244,15 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
             st.markdown("BMR")
             chart = _single_series_chart(tracker_trends, "bmr_kcal", "BMR", " kcal")
             st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No BMR readings logged yet.")
+            st.markdown("Visceral fat")
+            chart = _single_series_chart(tracker_trends, "visceral_fat", "Visceral fat")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No visceral-fat readings logged yet.")
+            st.markdown("Fat-free mass")
+            chart = _single_series_chart(tracker_trends, "fat_free_body_weight_kg", "Fat-free mass", " kg")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No fat-free-mass readings logged yet.")
+            st.markdown("Bone mass")
+            chart = _single_series_chart(tracker_trends, "bone_mass_kg", "Bone mass", " kg")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No bone-mass readings logged yet.")
+            st.markdown("Metabolic age")
+            chart = _single_series_chart(tracker_trends, "metabolic_age", "Metabolic age")
+            st.altair_chart(chart, use_container_width=True) if chart is not None else st.caption("No metabolic-age readings logged yet.")

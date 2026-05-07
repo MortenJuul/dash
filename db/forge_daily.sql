@@ -23,9 +23,16 @@ create table if not exists challenge.forge_daily (
   weight_unit text,
   bmi numeric(5,2),
   body_fat_pct numeric(5,2),
+  subcutaneous_fat_pct numeric(5,2),
+  visceral_fat numeric(5,2),
   skeletal_muscle_pct numeric(5,2),
+  muscle_mass_kg numeric(7,2),
+  fat_free_body_weight_kg numeric(7,2),
   body_water_pct numeric(5,2),
+  bone_mass_kg numeric(6,2),
+  protein_pct numeric(5,2),
   bmr_kcal integer,
+  metabolic_age integer,
   strikes_today integer,
   cumulative_strikes integer,
   notes text,
@@ -38,9 +45,16 @@ create index if not exists forge_daily_block_idx on challenge.forge_daily (block
 
 alter table challenge.forge_daily add column if not exists bmi numeric(5,2);
 alter table challenge.forge_daily add column if not exists body_fat_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists subcutaneous_fat_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists visceral_fat numeric(5,2);
 alter table challenge.forge_daily add column if not exists skeletal_muscle_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists muscle_mass_kg numeric(7,2);
+alter table challenge.forge_daily add column if not exists fat_free_body_weight_kg numeric(7,2);
 alter table challenge.forge_daily add column if not exists body_water_pct numeric(5,2);
+alter table challenge.forge_daily add column if not exists bone_mass_kg numeric(6,2);
+alter table challenge.forge_daily add column if not exists protein_pct numeric(5,2);
 alter table challenge.forge_daily add column if not exists bmr_kcal integer;
+alter table challenge.forge_daily add column if not exists metabolic_age integer;
 
 create or replace function challenge.touch_updated_at()
 returns trigger
@@ -82,9 +96,16 @@ select
   weight_unit,
   bmi,
   body_fat_pct,
+  subcutaneous_fat_pct,
+  visceral_fat,
   skeletal_muscle_pct,
+  muscle_mass_kg,
+  fat_free_body_weight_kg,
   body_water_pct,
+  bone_mass_kg,
+  protein_pct,
   bmr_kcal,
+  metabolic_age,
   strikes_today,
   cumulative_strikes,
   (
