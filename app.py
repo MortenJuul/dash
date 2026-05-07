@@ -16,6 +16,22 @@ st.markdown(
     """
     <style>
       .block-container { padding-top: 1.25rem; padding-bottom: 2rem; }
+      [data-testid="stSidebar"] div[data-testid="column"]:has(button[kind="tertiary"]) {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+      }
+      [data-testid="stSidebar"] button[kind="tertiary"] {
+        min-height: 2rem;
+        min-width: 2rem;
+        padding: 0.1rem 0.35rem;
+        border: none;
+        background: transparent;
+      }
+      [data-testid="stSidebar"] button[kind="tertiary"] p {
+        font-size: 1.15rem;
+        line-height: 1;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -76,7 +92,7 @@ if default_date not in set(tracker["entry_date"].tolist()):
 
 latest_update = tracker["updated_at_local"].dropna().max()
 with st.sidebar:
-    title_col, refresh_col = st.columns([0.88, 0.12], vertical_alignment="center")
+    title_col, refresh_col = st.columns([0.82, 0.18], vertical_alignment="center")
     title_col.markdown("## The 12-Week Forge")
     if refresh_col.button("↻", help="Refresh data", key="refresh_data", type="tertiary"):
         st.cache_data.clear()
