@@ -119,7 +119,7 @@ with st.sidebar:
 if section == "Home":
     render_today(tracker, food_daily, todos, browser_timezone, selected_date)
 elif section == "Forge":
-    render_forge(tracker, selected_date)
+    render_forge(tracker, selected_date, food_daily)
 elif section == "Food":
     render_food(
         food_daily,

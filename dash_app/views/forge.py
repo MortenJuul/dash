@@ -1,3 +1,4 @@
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -5,7 +6,44 @@ from dash_app.config import REVIEW_GATES
 from dash_app.formatting import bool_icon, format_local_dt
 
 
-def render_forge(tracker: pd.DataFrame, selected_date) -> None:
+def _trend_frame(frame: pd.DataFrame, selected_date, columns: list[str]) -> pd.DataFrame:
+    trend = frame.loc[frame["entry_date"] <= selected_date, ["entry_date", *columns]].copy()
+    trend["entry_date"] = pd.to_datetime(trend["entry_date"])
+    for column in columns:
+        trend[column] = pd.to_numeric(trend[column], errors="coerce")
+    return trend.sort_values("entry_date")
+
+
+def _single_series_chart(frame: pd.DataFrame, column: str, label: str, suffix: str = "") -> alt.Chart | None:
+    chart_frame = frame[["entry_date", column]].dropna(subset=[column]).copy()
+    if chart_frame.empty:
+        return None
+
+    chart_frame["date_label"] = chart_frame["entry_date"].dt.strftime("%Y-%m-%d")
+    chart_frame["value_label"] = chart_frame[column].map(lambda value: f"{value:g}{suffix}")
+    value_min = chart_frame[column].min()
+    value_max = chart_frame[column].max()
+    if value_min == value_max:
+        padding = max(abs(value_min) * 0.02, 1.0)
+    else:
+        padding = (value_max - value_min) * 0.12
+
+    base = alt.Chart(chart_frame).encode(
+        x=alt.X("entry_date:T", title="Date", sort="ascending"),
+        y=alt.Y(
+            f"{column}:Q",
+            title=label,
+            scale=alt.Scale(domain=[float(value_min - padding), float(value_max + padding)], zero=False, nice=False),
+        ),
+        tooltip=[
+            alt.Tooltip("date_label:N", title="Date"),
+            alt.Tooltip("value_label:N", title=label),
+        ],
+    )
+    return (base.mark_line(strokeWidth=2.5) + base.mark_circle(size=70)).properties(height=230)
+
+
+def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame | None = None) -> None:
     st.subheader("Forge")
     st.caption("Challenge status, weekly execution, and trends.")
 
@@ -41,17 +79,51 @@ def render_forge(tracker: pd.DataFrame, selected_date) -> None:
     display["updated_at_local"] = display["updated_at_local"].apply(format_local_dt)
     st.dataframe(display, use_container_width=True, hide_index=True)
 
-    chart_df = tracker.set_index("entry_date").copy()
     st.markdown("#### Trends")
+    st.caption("Showing logged days up to the selected date; future challenge rows are excluded.")
+    tracker_trends = _trend_frame(tracker, selected_date, ["weight", "strikes_today", "cumulative_strikes"])
+    challenge_start = tracker["entry_date"].min()
+    if food_daily is not None and not food_daily.empty:
+        nutrition_source = food_daily.loc[food_daily["entry_date"] >= challenge_start]
+        nutrition_trends = _trend_frame(nutrition_source, selected_date, ["protein_g", "water_liters"])
+    else:
+        nutrition_trends = _trend_frame(tracker, selected_date, ["protein_g", "water_liters"])
+
     left, right = st.columns(2)
     with left:
         st.markdown("Weight")
-        if chart_df["weight"].notna().any():
-            st.line_chart(chart_df[["weight"]])
+        chart = _single_series_chart(tracker_trends, "weight", "Weight", " kg")
+        if chart is not None:
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.caption("No weigh-ins logged yet.")
-        st.markdown("Protein / water")
-        st.line_chart(chart_df[["protein_g", "water_liters"]])
+        st.markdown("Protein")
+        chart = _single_series_chart(nutrition_trends, "protein_g", "Protein", " g")
+        if chart is not None:
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.caption("No protein totals logged yet.")
     with right:
+        st.markdown("Water")
+        chart = _single_series_chart(nutrition_trends, "water_liters", "Water", " L")
+        if chart is not None:
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.caption("No water totals logged yet.")
         st.markdown("Strikes")
-        st.line_chart(chart_df[["strikes_today", "cumulative_strikes"]].fillna(0))
+        strikes = tracker_trends[["entry_date", "strikes_today", "cumulative_strikes"]].copy()
+        strikes = strikes.dropna(how="all", subset=["strikes_today", "cumulative_strikes"])
+        if not strikes.empty:
+            strikes["strikes_today"] = strikes["strikes_today"].fillna(0)
+            strikes["cumulative_strikes"] = strikes["cumulative_strikes"].ffill().fillna(0)
+            melted = strikes.melt("entry_date", var_name="series", value_name="value")
+            melted["series"] = melted["series"].map({"strikes_today": "Today", "cumulative_strikes": "Cumulative"})
+            chart = alt.Chart(melted).mark_line(point=True, strokeWidth=2.5).encode(
+                x=alt.X("entry_date:T", title="Date", sort="ascending"),
+                y=alt.Y("value:Q", title="Strikes", scale=alt.Scale(domainMin=0, nice=False)),
+                color=alt.Color("series:N", title=None),
+                tooltip=[alt.Tooltip("entry_date:T", title="Date"), alt.Tooltip("series:N", title="Series"), alt.Tooltip("value:Q", title="Strikes", format=".0f")],
+            ).properties(height=230)
+            st.altair_chart(chart, use_container_width=True)
+        else:
+            st.caption("No strike data logged yet.")
