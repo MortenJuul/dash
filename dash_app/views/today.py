@@ -3,7 +3,7 @@ import streamlit as st
 
 from dash_app.config import HYDRATION_GOAL_L, PROTEIN_GOAL_G, STEP_GOAL
 from dash_app.data import save_forge_entry
-from dash_app.formatting import bool_icon, format_local_dt
+from dash_app.formatting import bool_icon, format_local_dt, safe_int
 
 
 FORGE_CHECKS = [
@@ -23,7 +23,7 @@ def _required_check_count(row: pd.Series) -> int:
 
 
 def _completed_check_count(row: pd.Series) -> int:
-    value = int(row["completed_checks"] or 0)
+    value = safe_int(row.get("completed_checks"))
     return min(value, _required_check_count(row))
 
 
@@ -85,7 +85,7 @@ def _render_challenge_card(row: pd.Series) -> None:
     st.progress(_safe_progress(checks_done, required_checks), text=f"{checks_done}/{required_checks} Forge checks")
     c1, c2, c3 = st.columns(3)
     c1.metric("Session", row["planned_session"])
-    c2.metric("Strikes", int(row["strikes_today"] or 0), f"{int(row['cumulative_strikes'] or 0)} total")
+    c2.metric("Strikes", safe_int(row.get("strikes_today")), f"{safe_int(row.get('cumulative_strikes'))} total")
     c3.metric("Weight", _format_weight(row), "logged" if row.get("weigh_in") is True else "not logged")
 
     checklist_rows = [{"Check": label, "Done": bool_icon(row.get(column))} for column, label in FORGE_CHECKS]

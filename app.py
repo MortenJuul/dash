@@ -4,6 +4,7 @@ import streamlit as st
 from dash_app.config import DATABASE_URL
 from dash_app.data import load_food_daily, load_ingredients, load_recipes, load_todos, load_tracker
 from dash_app.time_utils import get_browser_context
+from dash_app.formatting import safe_int
 from dash_app.views.admin import render_admin
 from dash_app.views.food import render_food
 from dash_app.views.forge import render_forge
@@ -103,9 +104,9 @@ with st.sidebar:
 
     st.markdown("#### At a glance")
     required_checks = 8 + (1 if selected_row.get("scale_available") is True else 0)
-    checks_done = min(int(selected_row["completed_checks"] or 0), required_checks)
+    checks_done = min(safe_int(selected_row["completed_checks"]), required_checks)
     st.progress(checks_done / required_checks, text=f"Forge checks: {checks_done}/{required_checks}")
-    st.metric("Strikes", int(selected_row["strikes_today"] or 0))
+    st.metric("Strikes", safe_int(selected_row["strikes_today"]))
     if pd.notna(selected_row.get("weight")):
         weight_unit = selected_row.get("weight_unit") if pd.notna(selected_row.get("weight_unit")) else "kg"
         st.metric("Weight", f"{selected_row['weight']:.2f} {weight_unit}")

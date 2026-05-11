@@ -2,7 +2,7 @@ import pandas as pd
 import streamlit as st
 
 from dash_app.charts import render_food_chart
-from dash_app.formatting import format_local_dt, join_list
+from dash_app.formatting import format_local_dt, join_list, safe_int
 
 
 def _warn_error(label: str, error: Exception | None) -> bool:
@@ -40,7 +40,7 @@ def render_food(
 
         st.caption(f"Latest logged day: {food.index[-1]}")
         metrics = st.columns(5)
-        metrics[0].metric("Calories", f"{int(latest['calories'])} / {int(latest['calories_target'])} kcal", f"{int(latest['calories_remaining'])} left")
+        metrics[0].metric("Calories", f"{safe_int(latest.get('calories'))} / {safe_int(latest.get('calories_target'))} kcal", f"{safe_int(latest.get('calories_remaining'))} left")
         metrics[1].metric("Protein", f"{latest['protein_g']:.1f} / {latest['protein_target_g']:.1f} g", f"{latest['protein_remaining_g']:.1f} g left")
         metrics[2].metric("Fat", f"{latest['fat_g']:.1f} / {latest['fat_target_g']:.1f} g", f"{latest['fat_remaining_g']:.1f} g left")
         metrics[3].metric("Carbs", f"{latest['carbs_g']:.1f} / {latest['carbs_target_g']:.1f} g", f"{latest['carbs_remaining_g']:.1f} g left")
