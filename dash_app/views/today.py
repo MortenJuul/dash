@@ -14,12 +14,11 @@ FORGE_CHECKS = [
     ("food_logged", "Food logged"),
     ("hydration_goal_hit", "Water"),
     ("creatine_taken", "Creatine"),
-    ("progress_photo", "Photo"),
 ]
 
 
 def _required_check_count(row: pd.Series) -> int:
-    return len(FORGE_CHECKS) + (1 if row.get("scale_available") is True else 0)
+    return len(FORGE_CHECKS)
 
 
 def _completed_check_count(row: pd.Series) -> int:
@@ -59,11 +58,9 @@ def _attention_items(row: pd.Series, food_row: pd.Series | None, open_todos: pd.
     if not bool(row.get("hydration_goal_hit")):
         water = float(row["water_liters"]) if pd.notna(row.get("water_liters")) else 0.0
         items.append(f"Forge water: {water:.2f}/{HYDRATION_GOAL_L:g} L")
-    for col, label in [("food_logged", "Food not marked complete"), ("creatine_taken", "Creatine"), ("progress_photo", "Progress photo")]:
+    for col, label in [("food_logged", "Food not marked complete"), ("creatine_taken", "Creatine")]:
         if row.get(col) is not True:
             items.append(label)
-    if row.get("scale_available") is True and row.get("weigh_in") is not True:
-        items.append("Weigh-in missing")
     if food_row is not None and pd.notna(food_row.get("protein_remaining_g")) and food_row["protein_remaining_g"] > 0:
         items.append(f"Food protein left: {food_row['protein_remaining_g']:.1f} g")
     if food_row is not None and pd.notna(food_row.get("water_remaining_liters")) and food_row["water_remaining_liters"] > 0:
@@ -89,8 +86,6 @@ def _render_challenge_card(row: pd.Series) -> None:
     c3.metric("Weight", _format_weight(row), "logged" if row.get("weigh_in") is True else "not logged")
 
     checklist_rows = [{"Check": label, "Done": bool_icon(row.get(column))} for column, label in FORGE_CHECKS]
-    if row.get("scale_available") is True:
-        checklist_rows.append({"Check": "Weigh-in", "Done": bool_icon(row.get("weigh_in"))})
     checklist = pd.DataFrame(checklist_rows)
     st.dataframe(checklist, use_container_width=True, hide_index=True, height=315)
 
@@ -154,10 +149,10 @@ def _render_forge_form(row: pd.Series, selected_date) -> None:
             no_snacks_or_grazing = st.checkbox("No candy / snacks / grazing", value=bool(row["no_snacks_or_grazing"]) if pd.notna(row["no_snacks_or_grazing"]) else False)
             food_logged = st.checkbox("Food fully logged", value=bool(row["food_logged"]) if pd.notna(row["food_logged"]) else False)
             creatine_taken = st.checkbox("Creatine taken", value=bool(row["creatine_taken"]) if pd.notna(row["creatine_taken"]) else False)
-            progress_photo = st.checkbox("Progress photo taken", value=bool(row["progress_photo"]) if pd.notna(row["progress_photo"]) else False)
+            progress_photo = st.checkbox("Progress photo taken (optional; start/end only)", value=bool(row["progress_photo"]) if pd.notna(row["progress_photo"]) else False, help="Progress photos no longer count toward Forge daily checks or strikes.")
 
-        scale_available = st.checkbox("Scale available today", value=bool(row["scale_available"]) if pd.notna(row["scale_available"]) else False)
-        weigh_in = st.checkbox("Weighed in", value=bool(row["weigh_in"]) if pd.notna(row["weigh_in"]) else False, disabled=not scale_available)
+        scale_available = st.checkbox("Home scale available today", value=bool(row["scale_available"]) if pd.notna(row["scale_available"]) else False, help="Weigh-ins are optional trend data and do not count toward strikes.")
+        weigh_in = st.checkbox("Weighed in on home scale", value=bool(row["weigh_in"]) if pd.notna(row["weigh_in"]) else False, disabled=not scale_available)
         weight = st.number_input("Body weight", min_value=0.0, max_value=1000.0, value=float(row["weight"]) if pd.notna(row["weight"]) else 0.0, step=0.1, disabled=not (scale_available and weigh_in))
         weight_unit = st.selectbox("Weight unit", options=["lb", "kg"], index=0 if row.get("weight_unit") != "kg" else 1, disabled=not (scale_available and weigh_in))
         notes = st.text_area("Notes", value=row["notes"] or "", height=90)

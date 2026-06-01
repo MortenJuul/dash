@@ -116,8 +116,6 @@ select
     + coalesce((food_logged is true)::int, 0)
     + coalesce((hydration_goal_hit is true)::int, 0)
     + coalesce((creatine_taken is true)::int, 0)
-    + coalesce((progress_photo is true)::int, 0)
-    + coalesce((case when scale_available is true then (weigh_in is true)::int else 0 end), 0)
   ) as completed_checks,
   notes,
   updated_at

@@ -145,11 +145,9 @@ def save_forge_entry(payload: dict[str, Any]) -> None:
     strike_checks = [
         payload.get("workout_done"), steps_goal_hit, protein_goal_hit,
         payload.get("no_snacks_or_grazing"), payload.get("food_logged"),
-        hydration_goal_hit, payload.get("creatine_taken"), payload.get("progress_photo"),
+        hydration_goal_hit, payload.get("creatine_taken"),
     ]
     strikes_today = sum(value is False for value in strike_checks)
-    if scale_available and weigh_in is False:
-        strikes_today += 1
 
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
         with conn.cursor() as cur:

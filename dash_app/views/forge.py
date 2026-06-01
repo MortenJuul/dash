@@ -70,7 +70,7 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
     st.caption("Challenge status, weekly execution, and trends.")
 
     total_strikes = int(tracker["strikes_today"].fillna(0).sum())
-    days_complete = int((tracker["completed_checks"].fillna(0) >= 8).sum())
+    days_complete = int((tracker["completed_checks"].fillna(0) >= 7).sum())
     selected_match = tracker.loc[tracker["entry_date"] == selected_date]
     current = selected_match.iloc[0] if not selected_match.empty else tracker.iloc[-1]
 
@@ -157,7 +157,7 @@ def render_forge(tracker: pd.DataFrame, selected_date, food_daily: pd.DataFrame 
         "bmr_kcal", "metabolic_age", "strikes_today",
         "cumulative_strikes", "updated_at_local",
     ]].copy()
-    for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken", "progress_photo", "weigh_in"]:
+    for col in ["workout_done", "steps_goal_hit", "protein_goal_hit", "food_logged", "hydration_goal_hit", "creatine_taken"]:
         display[col] = display[col].map(bool_icon)
     display["updated_at_local"] = display["updated_at_local"].apply(format_local_dt)
     st.dataframe(display, use_container_width=True, hide_index=True)

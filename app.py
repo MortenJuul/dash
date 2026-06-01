@@ -103,7 +103,7 @@ with st.sidebar:
     food_row = food_match.iloc[0] if not food_match.empty else None
 
     st.markdown("#### At a glance")
-    required_checks = 8 + (1 if selected_row.get("scale_available") is True else 0)
+    required_checks = 7
     checks_done = min(safe_int(selected_row["completed_checks"]), required_checks)
     st.progress(checks_done / required_checks, text=f"Forge checks: {checks_done}/{required_checks}")
     st.metric("Strikes", safe_int(selected_row["strikes_today"]))
